@@ -1333,6 +1333,68 @@ def test_weigh_inv_vol():
     assert weights["c2"] == pytest.approx(0.980, 3)
 
 
+def test_weigh_inv_vol_missing_data_isolation():
+    """Gaps in one asset must not change other assets' relative weights (#560)."""
+    algo = algos.WeighInvVol(lookback=pd.DateOffset(days=30))
+
+    dts = pd.date_range("2010-01-01", periods=30)
+    base = pd.DataFrame(index=dts, columns=["a", "b"], data=100.0)
+    # a is volatile, b is calm
+    for i in range(1, 30):
+        base.loc[dts[i], "a"] = 100 * (1 + (0.03 if i % 2 else -0.03))
+        base.loc[dts[i], "b"] = 100 * (1 + (0.001 if i % 2 else -0.001))
+
+    # reference: only a & b selected
+    s = bt.Strategy("s")
+    s.setup(base)
+    s.update(dts[-1])
+    s.temp["selected"] = ["a", "b"]
+    assert algo(s)
+    reference = s.temp["weights"]
+    share_ab = reference["a"] / (reference["a"] + reference["b"])
+
+    # add c with interior gaps; a & b data unchanged
+    data = base.copy()
+    data["c"] = 100.0
+    for i in range(1, 30):
+        data.loc[dts[i], "c"] = 100 * (
+            1 + (0.02 if i % 3 == 1 else -0.02 if i % 3 == 2 else 0)
+        )
+    data.loc[dts[5:10], "c"] = np.nan
+
+    s2 = bt.Strategy("s2")
+    s2.setup(data)
+    s2.update(dts[-1])
+    s2.temp["selected"] = ["a", "b", "c"]
+    assert algo(s2)
+    weights = s2.temp["weights"]
+    assert set(weights.index) == {"a", "b", "c"}
+    share_ab_with_c = weights["a"] / (weights["a"] + weights["b"])
+    assert share_ab_with_c == pytest.approx(share_ab, rel=1e-6)
+
+
+def test_weigh_inv_vol_excludes_all_missing_and_zero_vol():
+    """An all-missing asset must not wipe out the weights; zero-vol is excluded."""
+    algo = algos.WeighInvVol(lookback=pd.DateOffset(days=30))
+
+    dts = pd.date_range("2010-01-01", periods=30)
+    data = pd.DataFrame(index=dts, columns=["a", "b", "dead", "flat"], data=100.0)
+    for i in range(1, 30):
+        data.loc[dts[i], "a"] = 100 * (1 + (0.03 if i % 2 else -0.03))
+        data.loc[dts[i], "b"] = 100 * (1 + (0.001 if i % 2 else -0.001))
+    data["dead"] = np.nan
+    # "flat" stays constant → zero volatility → excluded
+
+    s = bt.Strategy("s")
+    s.setup(data)
+    s.update(dts[-1])
+    s.temp["selected"] = ["a", "b", "dead", "flat"]
+    assert algo(s)
+    weights = s.temp["weights"]
+    assert set(weights.index) == {"a", "b"}
+    assert weights["b"] > weights["a"]  # calm asset outweighs the volatile one
+
+
 @mock.patch("ffn.calc_mean_var_weights")
 def test_weigh_mean_var(mock_mv):
     algo = algos.WeighMeanVar(lookback=pd.DateOffset(days=5))

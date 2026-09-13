@@ -1191,9 +1191,13 @@ class WeighInvVol(Algo):
 
         t0 = target.now - self.lag
         prc = target.universe.loc[t0 - self.lookback : t0, selected]
-        returns = prc.to_returns().dropna()
-        # Explicit axis=0 to compute per-column std and avoid FutureWarning
-        # from pandas (axis=None will reduce over both axes in a future version)
+        # Estimate each asset's volatility from its own available observations.
+        # Do NOT drop rows with any NaN: a gap in one asset would shrink (or,
+        # with an all-missing asset, eliminate) the sample used by every other
+        # asset and silently change their relative weights (issue #560).
+        # pandas' std skips NaNs per column, so each column here uses exactly
+        # its own valid returns within the lookback window.
+        returns = prc.to_returns()
         vol = 1.0 / returns.std(axis=0, ddof=1)
         vol[np.isinf(vol)] = np.nan
         tw = vol / vol.sum()

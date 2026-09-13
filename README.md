@@ -1,5 +1,11 @@
 # bt — Flexible Backtesting for Python
 
+> **Fork notice:** This repository is a fork of [pmorissette/bt](https://github.com/pmorissette/bt) (MIT License).
+> Fix added on top of upstream `main`:
+> 1. **`WeighInvVol` missing-data isolation (issue [#560](https://github.com/pmorissette/bt/issues/560))** — the volatility sample used `dropna()` across all selected columns, so a gap in one asset shrank (or, with an all-missing asset, eliminated) the sample used by every other asset: adding a gappy third asset silently changed the A:B weight split, and a panel containing an all-missing asset produced an *empty* weight map (strategy silently stops rebalancing). Each asset's inverse volatility is now estimated from its own valid observations within the same lookback window. Two regression tests added; full suite 297/297 green.
+> 2. 中文说明：本仓库为 bt 的二次开发版本，修复了 `WeighInvVol` 在任一资产存在缺失数据时污染其他资产波动率样本（最坏情况导致权重为空、策略静默停止调仓）的问题。
+
+
 [![Build Status](https://github.com/pmorissette/bt/workflows/Build%20Status/badge.svg)](https://github.com/pmorissette/bt/actions/)
 [![PyPI Version](https://img.shields.io/pypi/v/bt)](https://pypi.org/project/bt/)
 [![PyPI License](https://img.shields.io/pypi/l/bt)](https://pypi.org/project/bt/)
